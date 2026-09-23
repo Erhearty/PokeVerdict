@@ -3,7 +3,7 @@
   "checks": [
     {
       "id": "test",
-      "name": "pytest",
+      "name": "pytest (all tools/test_*.py)",
       "kind": "test",
       "command": "python3 -m pytest -q",
       "enabled": true,

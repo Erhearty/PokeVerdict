@@ -15,6 +15,7 @@ import os
 import pytest
 
 import solver_ref
+from collection_db import CollectionDB
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "gamedata.sqlite")
@@ -26,6 +27,12 @@ def gd() -> solver_ref.GameData:
     if not os.path.exists(DB) or os.path.getsize(DB) == 0:
         pytest.skip("gamedata.sqlite not built - run python3 tools/build_gamedata.py --fetch")
     return solver_ref.GameData(DB)
+
+
+@pytest.fixture
+def db(tmp_path) -> CollectionDB:
+    """Fresh CollectionDB in a temp dir, as test_collection_db.main() builds it."""
+    return CollectionDB(os.path.join(tmp_path, "coll.sqlite"))
 
 
 def _failure_list(module: object) -> list | None:
