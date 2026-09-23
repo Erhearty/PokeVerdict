@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "checks": [
+    {
+      "id": "test",
+      "name": "Python script tests",
+      "kind": "test",
+      "command": "python3 tools/test_collection_db.py && python3 tools/test_web.py && python3 tools/test_rules.py && python3 tools/test_fixtures.py",
+      "enabled": true,
+      "scope": "repo"
+    }
+  ]
+}

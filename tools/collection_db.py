@@ -382,3 +382,13 @@ class CollectionDB:
                     (entity_id,),
                 )
         return cur.rowcount > 0
+
+    def set_user_tag(self, entity_id: int, tag: str | None) -> bool:
+        """Set (or clear with None) the sticky manual tag on a live entity. Returns True if it existed."""
+        with self._lock:
+            with self._conn:
+                cur = self._conn.execute(
+                    "UPDATE entity SET user_tag = ? WHERE id = ? AND is_disposed = 0",
+                    (tag, entity_id),
+                )
+        return cur.rowcount > 0

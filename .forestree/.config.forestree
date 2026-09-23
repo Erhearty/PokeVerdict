@@ -19,11 +19,6 @@
             "data": {
               "routes": [
                 {
-                  "desc": "Web UI: appraised collection as a sortable table (requires --collection).",
-                  "method": "GET",
-                  "path": "/"
-                },
-                {
                   "desc": "Raw screenshot bytes for an observation, served with long-lived caching.",
                   "method": "GET",
                   "path": "/screenshot/{obsId}"
@@ -44,9 +39,14 @@
                   "path": "/pokemon/{entityId}"
                 },
                 {
-                  "desc": "Update an observation's fields (JSON body); recomputes PvP rank and verdict context.",
+                  "desc": "Update an observation's fields (JSON body); recomputes PvP rank and verdict context. Optional user_tag sets the entity's sticky manual tag override (one of the nine tags; null/\"\" clears it). A user_tag-only body skips re-evaluation.",
                   "method": "PATCH",
                   "path": "/pokemon/{entityId}"
+                },
+                {
+                  "desc": "Web UI: appraised collection as a sortable table (requires --collection). Responsive: at ≤640px it hides secondary columns and adds a sort select, thumb-sized actions and a bottom-sheet editor. Shows the manual tag override over the computed tag.",
+                  "method": "GET",
+                  "path": "/"
                 }
               ]
             },
