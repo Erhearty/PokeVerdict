@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "checks": [
+    {
+      "id": "test",
+      "name": "pytest",
+      "kind": "test",
+      "command": "python3 -m pytest -q",
+      "enabled": true,
+      "scope": "repo"
+    }
+  ]
+}

@@ -35,6 +35,16 @@ $ python3 tools/test_fixtures.py                 # real screenshots end to end
 all 3 fixtures passed
 ```
 
+To run every test at once (each `test_*` function reported individually;
+skipped if `gamedata.sqlite` hasn't been built):
+
+```
+$ pip install pytest      # pytest >= 8
+$ python3 -m pytest
+```
+
+The scripts above still run on their own, with the same output and exit codes.
+
 Measured against three actual appraisal screens:
 
 | Species | CP | Max HP | Measured bars | Raw | Level | Solver |
