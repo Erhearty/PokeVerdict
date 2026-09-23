@@ -23,6 +23,7 @@ it, it is used as a cross-check rather than an input.
 from __future__ import annotations
 
 import argparse
+import html
 import io
 import json
 import os
@@ -289,6 +290,37 @@ def load_rules(path: str | None) -> dict:
 _VERDICT_STRENGTH = {
     "KEEP": 6, "BUILD": 5, "BUDDY": 4, "TRADE": 3, "TRANSFER": 2, "UNDECIDED": 1,
 }
+
+# Canonical Pokémon GO tag names → priority for suggestedTag selection.
+# Single source of truth for the valid tag list (also used by the web UI).
+_TAG_PRIORITY = {
+    "Shiny": 8, "Max": 7,
+    "Great": 6, "Ultra": 6, "Raid": 5,
+    "Desired Evo": 3, "Keep": 2,
+    "Trade": 1, "Transfer": 0,
+}
+USER_TAGS: tuple[str, ...] = tuple(_TAG_PRIORITY)
+_USER_TAG_AUTO = "auto"
+
+
+def _parse_user_tag(value) -> tuple[bool, str | None]:
+    """
+    Validate a manual tag from a PATCH body.
+
+    None / "" / "auto" clear the override → (True, None); a case-insensitive
+    match of USER_TAGS → (True, canonical name); anything else → (False, None).
+    """
+    if value is None:
+        return True, None
+    if not isinstance(value, str):
+        return False, None
+    key = value.strip().lower()
+    if key in ("", _USER_TAG_AUTO):
+        return True, None
+    for tag in USER_TAGS:
+        if tag.lower() == key:
+            return True, tag
+    return False, None
 
 
 def make_rules_fn(rules: dict, gd: "GameData | None" = None):
@@ -588,12 +620,7 @@ def make_rules_fn(rules: dict, gd: "GameData | None" = None):
         reasons = [t[2] for t in fired]
 
         # suggestedTag: picks the most specific tag across all fired rules.
-        tag_priority = {
-            "Shiny": 8, "Max": 7,
-            "Great": 6, "Ultra": 6, "Raid": 5,
-            "Desired Evo": 3, "Keep": 2,
-            "Trade": 1, "Transfer": 0,
-        }
+        tag_priority = _TAG_PRIORITY
         suggested_tag: str | None = None
         best_tag_score = -1
         for _, tag, _ in fired:
@@ -772,6 +799,15 @@ _TAG_COLOR = {
     "trade":       "#8E6C9B",
     "transfer":    "#9A9A9A",
 }
+_DEFAULT_BADGE_COLOR = "#888"
+
+# Phone breakpoint shared by the CSS media query and the JS matchMedia guards.
+_NARROW_MQ = "(max-width:640px)"
+# Class on th/td cells hidden below the phone breakpoint.
+_HIDE_SM = "col-hide-sm"
+# (data key, label) pairs offered by the phone sort <select>.
+_SORT_KEYS = (("name", "Species"), ("cp", "CP"), ("pct", "IV%"),
+              ("stars", "Stars"), ("purpose", "Purpose"))
 
 _HTML_HEAD = """<!DOCTYPE html>
 <html lang="en">
@@ -827,6 +863,32 @@ tr:hover td{background:#f9fff5}
 .shot-cell{padding:.2rem .3rem;vertical-align:middle}
 .thumb{display:block;height:72px;width:36px;object-fit:cover;object-position:top center;border-radius:3px;background:#eee}
 .no-shot{color:#ddd;font-size:.75rem;padding:.2rem}
+.ivs-sm,.sort-sm{display:none}
+@media """ + _NARROW_MQ + """{
+body{font-size:16px}
+header{padding:.6rem .75rem}
+.bar{padding:.5rem}
+.wrap{padding:.5rem}
+table{table-layout:auto}
+.""" + _HIDE_SM + """{display:none}
+th{padding:.45rem .35rem;min-width:0}
+td{font-size:.95rem;padding:.45rem .35rem}
+td.name,td.verdict{white-space:normal}
+.badge{font-size:.8rem}
+.ivs-sm{display:block;font:400 .8rem monospace;color:#999;white-space:nowrap}
+.bar input{width:100%;min-width:0;max-width:none;font-size:16px}
+.bar select{font-size:16px;min-height:44px}
+.sort-sm{display:inline-block}
+.col-resize{display:none}
+td.actions{white-space:nowrap}
+.edit-btn,.del-btn{min-width:44px;min-height:44px;font-size:1.1rem;margin:0}
+.edit-btn{margin-right:8px}
+#edit-popup{left:0;right:0;bottom:0;top:auto;width:100%;min-width:0;border-radius:12px 12px 0 0;padding:1rem 1rem 1.5rem}
+#edit-popup label{min-height:44px;font-size:1rem}
+#edit-popup input[type=checkbox]{width:24px;height:24px}
+#edit-popup input[type=number],#edit-popup select{min-height:44px;font-size:16px;flex:1}
+#edit-popup .ep-save,#edit-popup .ep-cancel{min-height:44px;flex:1;font-size:1rem}
+}
 </style>
 </head>"""
 
@@ -834,6 +896,8 @@ _HTML_SCRIPT = """<script>
 const tbody = document.getElementById('tbody');
 const countEl = document.getElementById('count');
 let sortKey = 'cp', sortDir = -1;
+const NARROW_MQ = '""" + _NARROW_MQ + """';
+function isNarrow(){ return window.matchMedia(NARROW_MQ).matches; }
 
 function updateCount(){
   let n = 0;
@@ -852,13 +916,16 @@ function applyFilter(){
   updateCount();
 }
 
-function sortBy(key){
-  if(sortKey === key) sortDir = -sortDir;
+function sortBy(key, dir){
+  if(dir !== undefined){ sortKey = key; sortDir = dir; }
+  else if(sortKey === key) sortDir = -sortDir;
   else { sortKey = key; sortDir = -1; }
   document.querySelectorAll('th[data-key]').forEach(th => {
     th.classList.remove('asc','desc');
     if(th.dataset.key === key) th.classList.add(sortDir > 0 ? 'asc' : 'desc');
   });
+  const ss = document.getElementById('sortsel');
+  if(ss) ss.value = key + ':' + sortDir;
   const rows = [...tbody.rows];
   rows.sort((a,b) => {
     let av = a.dataset[key] ?? '', bv = b.dataset[key] ?? '';
@@ -871,6 +938,10 @@ function sortBy(key){
 
 document.getElementById('q').addEventListener('input', applyFilter);
 document.getElementById('vf').addEventListener('change', applyFilter);
+document.getElementById('sortsel').addEventListener('change', e => {
+  const [k, d] = e.target.value.split(':');
+  sortBy(k, parseInt(d, 10));
+});
 
 function delPokemon(e, id, name) {
   if(!confirm('Transfer ' + name + '?')) return;
@@ -883,6 +954,7 @@ updateCount();
 
 // Measure fixed column widths under auto layout, then lock them.
 (function(){
+  if(isNarrow()) return;
   const tbl = document.querySelector('table');
   const ths = [...document.querySelectorAll('th')];
   tbl.style.tableLayout = 'auto';
@@ -898,6 +970,7 @@ document.querySelectorAll('th:not([data-noresize])').forEach(th => {
   th.appendChild(handle);
   let startX, startW;
   handle.addEventListener('mousedown', e => {
+    if(isNarrow()) return;
     e.stopPropagation();
     startX = e.pageX;
     startW = th.offsetWidth;
@@ -923,8 +996,17 @@ function openEdit(e, eid) {
   document.getElementById('ep-shadow').checked  = ds.shadow  === '1';
   document.getElementById('ep-costume').checked = ds.costume === '1';
   document.getElementById('ep-dynamax').checked = ds.dynamax === '1';
+  const sel = document.getElementById('ep-tag');
+  sel.options[0].textContent = ds.autotag ? 'Auto (' + ds.autotag + ')' : 'Auto';
+  sel.value = ds.usertag || '';
+  if (sel.selectedIndex < 0) sel.value = '';
   const popup = document.getElementById('edit-popup');
   popup.style.display = 'block';
+  if (isNarrow()) {
+    popup.style.left = '';
+    popup.style.top  = '';
+    return;
+  }
   const px = Math.min(e.clientX, window.innerWidth  - 220);
   const py = Math.min(e.clientY, window.innerHeight - 180);
   popup.style.left = px + 'px';
@@ -944,6 +1026,7 @@ function saveEdit() {
     is_shadow:  document.getElementById('ep-shadow').checked  ? 1 : 0,
     is_costume: document.getElementById('ep-costume').checked ? 1 : 0,
     is_dynamax: document.getElementById('ep-dynamax').checked ? 1 : 0,
+    user_tag:   document.getElementById('ep-tag').value || null,
   };
   fetch('/pokemon/' + _editEid, {
     method: 'PATCH',
@@ -979,8 +1062,23 @@ def _badge(verdict: str | None, tag: str | None = None) -> str:
     if not verdict:
         return ""
     label = tag or verdict.upper()
-    color = _TAG_COLOR.get(label.lower(), _VERDICT_COLOR.get(verdict.lower(), "#888"))
+    color = _TAG_COLOR.get(label.lower(), _VERDICT_COLOR.get(verdict.lower(), _DEFAULT_BADGE_COLOR))
     return f'<span class="badge" style="background:{color}">{label}</span>'
+
+
+def _eff_tag(row) -> str:
+    """Effective tag for a collection row: the manual override, else the computed suggestion."""
+    return row["user_tag"] or row["verdict_tag"] or ""
+
+
+def _row_badge(verdict: str | None, user_tag: str | None, auto_tag: str | None) -> str:
+    """Verdict badge; a manual override is marked with ✎ and names the rules' suggestion."""
+    if not user_tag:
+        return _badge(verdict, auto_tag)
+    color = _TAG_COLOR.get(user_tag.lower(), _DEFAULT_BADGE_COLOR)
+    title = html.escape(f"Manual tag (rules suggest: {auto_tag or verdict or 'none'})")
+    return (f'<span class="badge" style="background:{color}" title="{title}">'
+            f'{html.escape(user_tag)} ✎</span>')
 
 
 def _relative_time(iso: str) -> str:
@@ -1051,7 +1149,7 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
                        if all(v is not None for v in ivs) else "—")
             name = r["display_name"] or ""
             verdict = r["verdict"] or ""
-            verdict_tag = r["verdict_tag"] or ""
+            eff_tag = _eff_tag(r)
             flags = ("✨ " if r["is_shiny"] else "") + ("🌑 " if r["is_shadow"] else "")
 
             # Best moves — use PvP context when the purpose is a PvP league.
@@ -1062,14 +1160,15 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
                     moves = gd.best_moves(r["species_template_id"])
                 except Exception:
                     pass
-            use_pvp = verdict_tag in ("Great", "Ultra") or any(kw in purpose for kw in ("League", "GL", "UL", "ML"))
+            use_pvp = eff_tag in ("Great", "Ultra") or any(kw in purpose for kw in ("League", "GL", "UL", "ML"))
             mv = moves.get("pvp" if use_pvp else "raid", {})
             fast_text    = mv.get("fast") or "—"
             charged_list = mv.get("charged") or []
             charged_text = " / ".join(charged_list) if charged_list else "—"
 
-            tag_lower = verdict_tag.lower()
-            search_str = f"{name.lower()} {verdict.lower()} {tag_lower} {purpose.lower()}"
+            tag_lower = html.escape(eff_tag.lower(), quote=True)
+            search_str = html.escape(
+                f"{name.lower()} {verdict.lower()} {eff_tag.lower()} {purpose.lower()}", quote=True)
             stars_val = (0 if total is None else
                          3 if total >= 37 else 2 if total >= 30 else 1 if total >= 23 else 0)
             eid = r["entity_id"]
@@ -1079,12 +1178,12 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
             safe_name = name.replace("'", "\\'")
             obs_id = r["observation_id"]
             if r["has_screenshot"]:
-                shot_cell = (f'<td class="shot-cell">'
+                shot_cell = (f'<td class="shot-cell {_HIDE_SM}">'
                              f'<a href="/screenshot/{obs_id}" target="_blank">'
                              f'<img src="/screenshot/{obs_id}" class="thumb" loading="lazy">'
                              f'</a></td>')
             else:
-                shot_cell = '<td class="shot-cell no-shot">—</td>'
+                shot_cell = f'<td class="shot-cell no-shot {_HIDE_SM}">—</td>'
             parts.append(
                 f'<tr data-name="{name}" data-cp="{cp_raw}" data-pct="{pct}"'
                 f' data-stars="{stars_val}" data-verdict="{verdict.lower()}" data-tag="{tag_lower}"'
@@ -1093,29 +1192,40 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
                 f' data-costume="{1 if r["is_costume"] else 0}"'
                 f' data-dynamax="{1 if r["is_dynamax"] else 0}"'
                 f' data-eid="{eid}"'
+                f' data-usertag="{html.escape(r["user_tag"] or "")}"'
+                f' data-autotag="{html.escape(r["verdict_tag"] or "")}"'
+                f' data-purpose="{html.escape(purpose.lower())}"'
                 f' data-search="{search_str}">'
                 + shot_cell
                 + f'<td class="name">{flags}{name}</td>'
                 f'<td class="nw">{cp_display}</td>'
-                f'<td class="dim nw">{hp_val}</td>'
-                f'<td class="ivs">{iv_text}</td>'
-                f'<td class="pct">{pct + "%" if pct else "—"}</td>'
-                f'<td class="nw">{_stars_html(total)}</td>'
-                f'<td class="mv">{fast_text}</td>'
-                f'<td class="mv">{charged_text}</td>'
-                f'<td class="purpose">{purpose}</td>'
-                f'<td class="nw">{_badge(verdict, verdict_tag)}</td>'
-                f'<td class="dim">{_relative_time(r["captured_at"])}</td>'
-                f'<td><button class="edit-btn" onclick="openEdit(event,{eid})">&#9998;</button>'
+                f'<td class="dim nw {_HIDE_SM}">{hp_val}</td>'
+                f'<td class="ivs {_HIDE_SM}">{iv_text}</td>'
+                f'<td class="pct">{pct + "%" if pct else "—"}'
+                f'<span class="ivs-sm">{iv_text}</span></td>'
+                f'<td class="nw {_HIDE_SM}">{_stars_html(total)}</td>'
+                f'<td class="mv {_HIDE_SM}">{fast_text}</td>'
+                f'<td class="mv {_HIDE_SM}">{charged_text}</td>'
+                f'<td class="purpose {_HIDE_SM}">{purpose}</td>'
+                f'<td class="nw verdict">{_row_badge(verdict, r["user_tag"], r["verdict_tag"])}</td>'
+                f'<td class="dim {_HIDE_SM}">{_relative_time(r["captured_at"])}</td>'
+                f'<td class="actions"><button class="edit-btn" onclick="openEdit(event,{eid})">&#9998;</button>'
                 f'<button class="del-btn" onclick="delPokemon(event,{eid},\'{safe_name}\')">&times;</button></td>'
                 f'</tr>\n'
             )
         body = "".join(parts)
 
     count = len(rows)
-    tags = sorted({(r["verdict_tag"] or "").lower() for r in rows if r["verdict_tag"]})
+    tags = sorted({_eff_tag(r).lower() for r in rows} - {""})
     tag_opts = '<option value="">All tags</option>' + "".join(
-        f'<option value="{t}">{t.title()}</option>' for t in tags
+        f'<option value="{html.escape(t)}">{html.escape(t.title())}</option>' for t in tags
+    )
+    sort_opts = "".join(
+        f'<option value="{k}:{d}"{" selected" if (k, d) == ("cp", -1) else ""}>{label} {arrow}</option>'
+        for k, label in _SORT_KEYS for d, arrow in ((1, "↑"), (-1, "↓"))
+    )
+    ep_tag_opts = '<option value="">Auto</option>' + "".join(
+        f'<option value="{t}">{t}</option>' for t in USER_TAGS
     )
 
     return (
@@ -1129,22 +1239,23 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
 <div class="bar">
   <input id="q" type="search" placeholder="Search species or verdict…" autofocus>
   <select id="vf">{tag_opts}</select>
+  <select id="sortsel" class="sort-sm" aria-label="Sort by">{sort_opts}</select>
 </div>
 <div class="wrap">
 <table>
 <thead><tr>
-  <th data-noresize></th>
+  <th data-noresize class="{_HIDE_SM}"></th>
   <th data-noresize data-key="name" onclick="sortBy('name')">Species</th>
   <th data-noresize data-key="cp" onclick="sortBy('cp')" class="desc">CP</th>
-  <th data-noresize>HP</th>
-  <th data-noresize style="min-width:5.5rem">IVs</th>
+  <th data-noresize class="{_HIDE_SM}">HP</th>
+  <th data-noresize class="{_HIDE_SM}" style="min-width:5.5rem">IVs</th>
   <th data-noresize data-key="pct" onclick="sortBy('pct')">IV%</th>
-  <th data-noresize data-key="stars" onclick="sortBy('stars')">Stars</th>
-  <th>Fast</th>
-  <th>Charged</th>
-  <th data-key="purpose" onclick="sortBy('purpose')">Purpose</th>
+  <th data-noresize class="{_HIDE_SM}" data-key="stars" onclick="sortBy('stars')">Stars</th>
+  <th class="{_HIDE_SM}">Fast</th>
+  <th class="{_HIDE_SM}">Charged</th>
+  <th class="{_HIDE_SM}" data-key="purpose" onclick="sortBy('purpose')">Purpose</th>
   <th data-noresize>Verdict</th>
-  <th>Seen</th>
+  <th class="{_HIDE_SM}">Seen</th>
   <th data-noresize></th>
 </tr></thead>
 <tbody id="tbody">
@@ -1159,6 +1270,7 @@ def _render_collection(coll: "CollectionDB", gd: "GameData | None" = None) -> st
   <label><input id="ep-shadow" type="checkbox"> Shadow 🌑</label>
   <label><input id="ep-costume" type="checkbox"> Costume 🎩</label>
   <label><input id="ep-dynamax" type="checkbox"> Dynamax ☁</label>
+  <label for="ep-tag">Tag <select id="ep-tag">{ep_tag_opts}</select></label>
   <div class="ep-row">
     <button class="ep-save" onclick="saveEdit()">Save</button>
     <button class="ep-cancel" onclick="closeEdit()">Cancel</button>
@@ -1305,65 +1417,103 @@ class Handler(BaseHTTPRequestHandler):
         if self.collection is None:
             self._send(503, {"ok": False, "error": "no collection"})
             return
+        updates = self._read_patch_body()
+        if updates is None:
+            return
+        has_tag = "user_tag" in updates
+        tag = None
+        if has_tag:
+            ok, tag = _parse_user_tag(updates.pop("user_tag"))
+            if not ok:
+                self._send(400, {"ok": False, "error": "invalid user_tag"})
+                return
+        extra = {"user_tag": tag} if has_tag else {}
+
+        with self.lock:
+            if has_tag and not self.collection.set_user_tag(eid, tag):
+                self._send(404, {"ok": False, "error": "entity not found"})
+                return
+            if has_tag and not updates:
+                self._send(200, {"ok": True, **extra})
+                return
+            obs_id = self.collection.update_observation(eid, updates)
+            if obs_id is None and has_tag:
+                # Tag saved; remaining keys were not editable fields.
+                self._send(200, {"ok": True, **extra})
+                return
+            if obs_id is None:
+                self._send(404, {"ok": False, "error": "entity not found"})
+                return
+            fields = self._reevaluate(obs_id)
+        self._send(200, {"ok": True, **(fields or {}), **extra})
+
+    def _read_patch_body(self) -> dict | None:
+        """Read and parse the PATCH JSON object body; sends a 400 and returns None on error."""
         length = int(self.headers.get("Content-Length", 0))
         if not length:
             self._send(400, {"ok": False, "error": "empty body"})
-            return
+            return None
         try:
             updates = json.loads(self.rfile.read(length))
         except Exception:
             self._send(400, {"ok": False, "error": "bad JSON"})
-            return
+            return None
+        if not isinstance(updates, dict):
+            self._send(400, {"ok": False, "error": "body must be a JSON object"})
+            return None
+        return updates
 
-        with self.lock:
-            obs_id = self.collection.update_observation(eid, updates)
-            if obs_id is None:
-                self._send(404, {"ok": False, "error": "entity not found"})
-                return
-            row = self.collection.get_observation(obs_id)
+    def _reevaluate(self, obs_id: int) -> dict | None:
+        """
+        Re-run the rules on an edited observation and persist the new verdict.
+
+        Caller holds self.lock. Returns the response fields, or None when the
+        species cannot be resolved (verdict left as is).
+        """
+        row = self.collection.get_observation(obs_id)
+        try:
+            species = self.gamedata.species(row["species_template_id"])
+        except KeyError:
             try:
-                species = self.gamedata.species(row["species_template_id"])
+                species = self.gamedata.best_species_match(row["display_name"])
             except KeyError:
-                try:
-                    species = self.gamedata.best_species_match(row["display_name"])
-                except KeyError:
-                    self._send(200, {"ok": True})
-                    return
-            a, d, s = row["attack_iv"], row["defense_iv"], row["stamina_iv"]
-            total = row["iv_total"]
-            pvp: dict = {}
-            for league, cap in (("greatLeague", 1500), ("ultraLeague", 2500)):
-                rank, total_spreads = self.gamedata.pvp_rank(species.template_id, a, d, s, cap)
-                pvp[league] = {"rank": rank, "total": total_spreads}
-            fam_id = self.gamedata.family_id_for(species.template_id)
-            eval_input = {
-                "total": total, "percent": round(total / 45 * 100, 1), "ivs": [a, d, s],
-                "isShiny":    bool(row["is_shiny"]) or None,
-                "isShadow":   bool(row["is_shadow"]) or None,
-                "isPurified": bool(row["is_purified"]) or None,
-                "isLucky":    bool(row["is_lucky"]) or None,
-                "isCostume":  bool(row["is_costume"]) or None,
-                "isDynamax":  bool(row["is_dynamax"]) or None,
-                "pvp": pvp,
-                "boxContext": self.collection.box_context(species.template_id),
-                "familyContext": self.collection.family_context(
-                    self.gamedata.family_members(fam_id) if fam_id else []
-                ),
-            }
-            r = self.rules_fn(species, eval_input)
-            new_verdict = r["verdict"].lower()
-            new_tag     = r.get("suggestedTag") or ""
-            new_reasons = "; ".join(r["reasons"])
-            self.collection.update_verdict(obs_id, new_verdict, new_reasons, new_tag)
-
-        self._send(200, {
-            "ok": True,
+                return None
+        r = self.rules_fn(species, self._eval_input(row, species))
+        new_verdict = r["verdict"].lower()
+        new_tag     = r.get("suggestedTag") or ""
+        new_reasons = "; ".join(r["reasons"])
+        self.collection.update_verdict(obs_id, new_verdict, new_reasons, new_tag)
+        return {
             "verdict": new_verdict,
             "suggestedTag": new_tag,
             "cp": row["cp"],
             "is_shiny": bool(row["is_shiny"]),
             "is_shadow": bool(row["is_shadow"]),
-        })
+        }
+
+    def _eval_input(self, row, species) -> dict:
+        """Build the rules-engine input dict for a stored observation row."""
+        a, d, s = row["attack_iv"], row["defense_iv"], row["stamina_iv"]
+        total = row["iv_total"]
+        pvp: dict = {}
+        for league, cap in (("greatLeague", 1500), ("ultraLeague", 2500)):
+            rank, total_spreads = self.gamedata.pvp_rank(species.template_id, a, d, s, cap)
+            pvp[league] = {"rank": rank, "total": total_spreads}
+        fam_id = self.gamedata.family_id_for(species.template_id)
+        return {
+            "total": total, "percent": round(total / 45 * 100, 1), "ivs": [a, d, s],
+            "isShiny":    bool(row["is_shiny"]) or None,
+            "isShadow":   bool(row["is_shadow"]) or None,
+            "isPurified": bool(row["is_purified"]) or None,
+            "isLucky":    bool(row["is_lucky"]) or None,
+            "isCostume":  bool(row["is_costume"]) or None,
+            "isDynamax":  bool(row["is_dynamax"]) or None,
+            "pvp": pvp,
+            "boxContext": self.collection.box_context(species.template_id),
+            "familyContext": self.collection.family_context(
+                self.gamedata.family_members(fam_id) if fam_id else []
+            ),
+        }
 
 
 def main() -> int:
