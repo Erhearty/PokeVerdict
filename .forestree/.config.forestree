@@ -1,0 +1,1168 @@
+{
+  "components": [
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "Reads the Pokémon GO appraisal screen, solves exact IVs, applies Keep/Build/Buddy/Trade rules, and pushes a verdict. Personal tool, read-only, no game API — the flow is screenshot → POST → verdict. Stateless per-request; optionally records verdicts to Collection DB and pushes to ntfy. Non-negotiable facts pinned by tests: Pokémon max at level 50 (not 55); HP is displayed \"current / max\" and only max is used; appraisal badge stars are 0–3 across bands 0–22/23–29/30–36/37–45; CP is derived from species+stamina IV+max HP (pinning level uniquely 54.5% of the time), never OCR'd as an input; IVs and verdicts never depend on CP; bars are measured by rightmost saturated pixel, not read via OCR digits."
+            },
+            "h": 180,
+            "id": "widget-1790165820655-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "routes": [
+                {
+                  "desc": "Web UI: appraised collection as a sortable table (requires --collection).",
+                  "method": "GET",
+                  "path": "/"
+                },
+                {
+                  "desc": "Raw screenshot bytes for an observation, served with long-lived caching.",
+                  "method": "GET",
+                  "path": "/screenshot/{obsId}"
+                },
+                {
+                  "desc": "Liveness/status: species count loaded, OCR availability, collection presence.",
+                  "method": "GET",
+                  "path": "/health"
+                },
+                {
+                  "desc": "POST a screenshot image; returns verdict JSON, or plain text with ?format=text. Records to Collection DB and pushes to ntfy when configured.",
+                  "method": "POST",
+                  "path": "/appraise"
+                },
+                {
+                  "desc": "Mark an entity as disposed (transferred/traded away).",
+                  "method": "DELETE",
+                  "path": "/pokemon/{entityId}"
+                },
+                {
+                  "desc": "Update an observation's fields (JSON body); recomputes PvP rank and verdict context.",
+                  "method": "PATCH",
+                  "path": "/pokemon/{entityId}"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165838633-1",
+            "title": "API Routing Schema",
+            "type": "endpoints",
+            "w": 440,
+            "x": 60,
+            "y": 60
+          },
+          {
+            "data": {
+              "techs": [
+                "Python 3",
+                "http.server (stdlib)",
+                "Pillow",
+                "numpy",
+                "pytesseract"
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838648-2",
+            "title": "Tech Stack Profiles",
+            "type": "techstack",
+            "w": 350,
+            "x": 90,
+            "y": 90
+          },
+          {
+            "data": {
+              "vars": [
+                {
+                  "desc": "HTTP listen port.",
+                  "example": "8765",
+                  "key": "--port"
+                },
+                {
+                  "desc": "HTTP bind address.",
+                  "example": "0.0.0.0",
+                  "key": "--host"
+                },
+                {
+                  "desc": "Path to the Game Data DB.",
+                  "example": "gamedata.sqlite",
+                  "key": "--gamedata"
+                },
+                {
+                  "desc": "Path to the rules file; activates the full purposeRules meta list.",
+                  "example": "rules.json",
+                  "key": "--rules"
+                },
+                {
+                  "desc": "ntfy.sh topic URL for push notifications on verdicts.",
+                  "example": "https://ntfy.sh/your-private-topic",
+                  "key": "--ntfy"
+                },
+                {
+                  "desc": "Path to the Collection DB; omit to run stateless.",
+                  "example": "collection.sqlite",
+                  "key": "--collection / --db"
+                },
+                {
+                  "desc": "Run appraisal against given images and exit, instead of serving.",
+                  "example": "fixtures/shots/*.PNG",
+                  "key": "--selftest"
+                }
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838670-3",
+            "title": "Configuration & Environment",
+            "type": "config",
+            "w": 350,
+            "x": 120,
+            "y": 120
+          },
+          {
+            "data": {
+              "text": "make_rules_fn returns {verdict, suggestedTag, reasons}. reasons lists every fired rule, not just the winner. verdict is the strongest that fired: KEEP > BUILD > BUDDY > TRADE > TRANSFER > UNDECIDED. suggestedTag priority is Build > Buddy > Keep, and is only set for KEEP/BUDDY verdicts. Only a perfect 15/15/15 (hundo, 45/45) earns KEEP on its own; the transferIVCeiling (82%+/37/45, the 3-star appraisal badge threshold) triggers immediate TRANSFER before any other rule — except for purposeRules BUILD species, where BUILD strength wins even at low IVs. Fallback is TRANSFER, not UNDECIDED: if nothing in the meta list matches and it isn't a hundo, there's no reason to hold it. purposeRules in rules.json ({species, purposes, verdict}, family matching) is the primary meta list and supersedes the legacy buildSpecies/keepSpecies lists."
+            },
+            "h": 200,
+            "id": "widget-1790165863774-4",
+            "title": "Verdict priority & fallback",
+            "type": "note",
+            "w": 350,
+            "x": 150,
+            "y": 150
+          }
+        ]
+      },
+      "id": "shortcut-server",
+      "name": "Shortcut Server",
+      "type": "backend"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "Apple Shortcuts app flow (SHORTCUTS.md), not code in this repo — no code signing, no developer account. \"Appraise\" shortcut: Take Screenshot → POST to Shortcut Server's /appraise?format=text with the screenshot as the request body → Show Result as a banner. Triggered by double back-tap. Untested end-to-end (no iPhone in the build environment); every action used is standard/documented."
+            },
+            "h": 180,
+            "id": "widget-1790165820795-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "techs": [
+                "Apple Shortcuts"
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838741-1",
+            "title": "Tech Stack Profiles",
+            "type": "techstack",
+            "w": 350,
+            "x": 60,
+            "y": 60
+          }
+        ]
+      },
+      "id": "ios-shortcut",
+      "name": "iOS Shortcut",
+      "type": "frontend"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "Authoritative implementation (tools/solver_ref.py) of IV solving, level pinning, PvP ranking, and OCR species resolution. GameData.pvp_rank() scores all 4096 IV combos by stat product at the highest level where CP ≤ league cap — raw IV total is the wrong metric for PvP. OCR species lookup goes through best_species_match() (exact → glyph-substitution exact → Levenshtein, budget 1 for names ≤5 chars else 2; raises on a tie), not the stable exact-match species(). Flags (isShiny/isShadow/isPurified/isLucky/isCostume/sizeClass) are None (unknown) until pixel detection exists — never coerce to False."
+            },
+            "h": 180,
+            "id": "widget-1790165820668-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "techs": [
+                "Python 3"
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838683-1",
+            "title": "Tech Stack Profiles",
+            "type": "techstack",
+            "w": 350,
+            "x": 60,
+            "y": 60
+          }
+        ]
+      },
+      "id": "iv-solver",
+      "name": "IV Solver",
+      "type": "custom"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "tools/build_gamedata.py — rebuilds gamedata.sqlite from PokeMiners' game_master.json (--fetch to pull fresh, or a local --input file). Tests pin a handful of species so a stat refresh that changes them fails loudly instead of silently."
+            },
+            "h": 180,
+            "id": "widget-1790165820707-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "techs": [
+                "Python 3"
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838698-1",
+            "title": "Tech Stack Profiles",
+            "type": "techstack",
+            "w": 350,
+            "x": 60,
+            "y": 60
+          },
+          {
+            "data": {
+              "vars": [
+                {
+                  "desc": "Pull fresh game_master.json before building.",
+                  "example": "",
+                  "key": "--fetch"
+                },
+                {
+                  "desc": "Local game_master JSON to build from.",
+                  "example": "gm.json",
+                  "key": "--input"
+                },
+                {
+                  "desc": "Output SQLite path.",
+                  "example": "gamedata.sqlite",
+                  "key": "--output"
+                }
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838712-2",
+            "title": "Configuration & Environment",
+            "type": "config",
+            "w": 350,
+            "x": 90,
+            "y": 90
+          }
+        ]
+      },
+      "id": "game-data-builder",
+      "name": "Game Data Builder",
+      "type": "custom"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "gamedata.sqlite: species base stats, CPM table (capped at level 51; 50.5/51 are Best-Buddy-only, 55 is Master League Battle Training only and would produce phantom candidates), powerup stardust bands (approximate, only narrows level search), evolutions, and moves. Built offline from PokeMiners game_master (gm.json) by Game Data Builder; the Shortcut Server and Calibration Tool only ever read it."
+            },
+            "h": 180,
+            "id": "widget-1790165820691-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "fields": [
+                {
+                  "flags": "Primary Key",
+                  "name": "species.template_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.dex",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.pokemon_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.form",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.display_name",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.base_attack",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.base_defense",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species.base_stamina",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.type1",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.type2",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.family_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.candy_to_evolve",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.km_buddy_distance",
+                  "notes": "-",
+                  "type": "REAL"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "species.is_default_form",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "species.rarity",
+                  "notes": "'legendary'/'mythic'/'ultra_beast'/NULL",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key",
+                  "name": "cpm.level_x2",
+                  "notes": "2× level so half-levels stay integers; capped at 51 (level 50.5/51, Best-Buddy-only).",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "cpm.multiplier",
+                  "notes": "-",
+                  "type": "REAL"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165856877-1",
+            "title": "species / cpm",
+            "type": "schema",
+            "w": 440,
+            "x": 60,
+            "y": 60
+          },
+          {
+            "data": {
+              "fields": [
+                {
+                  "flags": "Primary Key",
+                  "name": "powerup_cost.level_x2",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "powerup_cost.stardust",
+                  "notes": "POWERUP_BANDS is approximate; only narrows level search.",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "powerup_cost.candy",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "powerup_cost.xl_candy",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "Primary Key (composite)",
+                  "name": "evolution.from_template",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key (composite)",
+                  "name": "evolution.to_pokemon_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key (composite)",
+                  "name": "evolution.to_form",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "evolution.candy_cost",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "evolution.item",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key",
+                  "name": "move.move_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "move.display_name",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "move.move_type",
+                  "notes": "'fast' or 'charged'",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key (composite)",
+                  "name": "species_move.template_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key (composite)",
+                  "name": "species_move.move_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species_move.move_slot",
+                  "notes": "-",
+                  "type": "TEXT"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165856893-2",
+            "title": "powerup_cost / evolution / move / species_move",
+            "type": "schema",
+            "w": 440,
+            "x": 90,
+            "y": 90
+          }
+        ]
+      },
+      "id": "game-data-db",
+      "name": "Game Data DB",
+      "type": "database"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "collection.sqlite (Python port of CollectionDatabase.swift's schema). Observations are facts; entities are the interpretation and stay revisable — identity is a guess (two identical Gabites are indistinguishable from a screenshot), so entity linking must never silently merge ambiguous cases. Entity resolution: same identity_key + non-decreasing CP → same entity. Stores per-appraisal observations, capture failures, raw screenshots, and disposable/taggable entities."
+            },
+            "h": 180,
+            "id": "widget-1790165820731-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "fields": [
+                {
+                  "flags": "Primary Key",
+                  "name": "id",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "identity_key",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "nickname",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "user_tag",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_disposed",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "notes",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "first_seen_at",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "last_seen_at",
+                  "notes": "-",
+                  "type": "TEXT"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165856824-1",
+            "title": "entity",
+            "type": "schema",
+            "w": 440,
+            "x": 60,
+            "y": 60
+          },
+          {
+            "data": {
+              "fields": [
+                {
+                  "flags": "Primary Key",
+                  "name": "id",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "captured_at",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "species_template_id",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "display_name",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "cp",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "hp",
+                  "notes": "Max HP, never current.",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "stardust_cost",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "attack_iv",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "defense_iv",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "stamina_iv",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "iv_total",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "iv_certain",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_shiny",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_shadow",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_purified",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_lucky",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_costume",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 0",
+                  "name": "is_dynamax",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "-",
+                  "name": "size_class",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "verdict",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "verdict_tag",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "verdict_reason",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "gamedata_version",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "FK -> entity(id) ON DELETE SET NULL",
+                  "name": "entity_id",
+                  "notes": "-",
+                  "type": "INTEGER"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165856839-2",
+            "title": "observation",
+            "type": "schema",
+            "w": 440,
+            "x": 90,
+            "y": 90
+          },
+          {
+            "data": {
+              "fields": [
+                {
+                  "flags": "Primary Key",
+                  "name": "capture_failure.id",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "capture_failure.captured_at",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "capture_failure.raw_text",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "capture_failure.reason",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "-",
+                  "name": "capture_failure.screenshot",
+                  "notes": "-",
+                  "type": "BLOB"
+                },
+                {
+                  "flags": "-",
+                  "name": "capture_failure.mime_type",
+                  "notes": "-",
+                  "type": "TEXT"
+                },
+                {
+                  "flags": "Primary Key, FK -> observation(id) ON DELETE CASCADE",
+                  "name": "screenshot.observation_id",
+                  "notes": "-",
+                  "type": "INTEGER"
+                },
+                {
+                  "flags": "NOT NULL",
+                  "name": "screenshot.data",
+                  "notes": "-",
+                  "type": "BLOB"
+                },
+                {
+                  "flags": "NOT NULL DEFAULT 'image/jpeg'",
+                  "name": "screenshot.mime_type",
+                  "notes": "-",
+                  "type": "TEXT"
+                }
+              ]
+            },
+            "h": 240,
+            "id": "widget-1790165856862-3",
+            "title": "capture_failure / screenshot",
+            "type": "schema",
+            "w": 440,
+            "x": 120,
+            "y": 120
+          },
+          {
+            "data": {
+              "text": "Observations are facts; entities are the interpretation and must stay revisable. Two identical Gabites are indistinguishable from a screenshot — entity linking (same identity_key + non-decreasing CP → same entity) should prompt on ambiguity, never silently merge. undecided/untagged is a valid, honest outcome; do not add rules that force a decision beyond what's been appraised."
+            },
+            "h": 200,
+            "id": "widget-1790165863792-4",
+            "title": "Identity is a guess",
+            "type": "note",
+            "w": 350,
+            "x": 150,
+            "y": 150
+          }
+        ]
+      },
+      "id": "collection-db",
+      "name": "Collection DB",
+      "type": "database"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "tools/calibrate.py — measures the appraisal bar geometry on real screenshots and checks it against Game Data DB. Geometry constants live in the Geometry dataclass. Used to re-derive screen coordinates when a device's screen geometry differs from the reference fixtures."
+            },
+            "h": 180,
+            "id": "widget-1790165820752-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          },
+          {
+            "data": {
+              "techs": [
+                "Python 3",
+                "Pillow",
+                "numpy"
+              ]
+            },
+            "h": 200,
+            "id": "widget-1790165838726-1",
+            "title": "Tech Stack Profiles",
+            "type": "techstack",
+            "w": 350,
+            "x": 60,
+            "y": 60
+          }
+        ]
+      },
+      "id": "calibration-tool",
+      "name": "Calibration Tool",
+      "type": "custom"
+    },
+    {
+      "canvas": {
+        "widgets": [
+          {
+            "data": {
+              "text": "Optional outbound push via ntfy.sh (push_ntfy in shortcut_server.py) — forwards each verdict to an ntfy topic so the ntfy iOS app can show it as a push notification. Written but unverified: ntfy.sh was unreachable from the build sandbox where it was authored. The local appraisal path works fully without it."
+            },
+            "h": 180,
+            "id": "widget-1790165820774-0",
+            "title": "Intent & Scope Description",
+            "type": "text",
+            "w": 350,
+            "x": 30,
+            "y": 30
+          }
+        ]
+      },
+      "id": "ntfy-push",
+      "name": "ntfy Push",
+      "type": "gateway"
+    }
+  ],
+  "connections": [
+    {
+      "from": "ios-shortcut",
+      "protocol": "HTTP POST (image upload)",
+      "to": "shortcut-server"
+    },
+    {
+      "from": "shortcut-server",
+      "protocol": "Python function call",
+      "to": "iv-solver"
+    },
+    {
+      "from": "iv-solver",
+      "protocol": "SQLite (read)",
+      "to": "game-data-db"
+    },
+    {
+      "from": "shortcut-server",
+      "protocol": "SQLite (read/write)",
+      "to": "collection-db"
+    },
+    {
+      "from": "shortcut-server",
+      "protocol": "HTTPS POST",
+      "to": "ntfy-push"
+    },
+    {
+      "from": "game-data-builder",
+      "protocol": "SQLite (write, offline build)",
+      "to": "game-data-db"
+    },
+    {
+      "from": "calibration-tool",
+      "protocol": "SQLite (read)",
+      "to": "game-data-db"
+    }
+  ],
+  "forestreeFormatVersion": true,
+  "globalRules": {
+    "custom": {
+      "accessibility": "",
+      "ai_agent": "",
+      "coding": "",
+      "documentation": "",
+      "error_handling": "",
+      "performance": "",
+      "security": "",
+      "testing": "",
+      "version_control": ""
+    },
+    "rules": {
+      "adr_decisions": {
+        "checked": false,
+        "value": ""
+      },
+      "alt_text": {
+        "checked": true,
+        "value": ""
+      },
+      "api_examples": {
+        "checked": false,
+        "value": ""
+      },
+      "ask_when_ambiguous": {
+        "checked": true,
+        "value": ""
+      },
+      "avoid_n_plus_one": {
+        "checked": true,
+        "value": ""
+      },
+      "bundle_budget": {
+        "checked": true,
+        "value": 250
+      },
+      "cache_expensive": {
+        "checked": false,
+        "value": ""
+      },
+      "changelog": {
+        "checked": false,
+        "value": ""
+      },
+      "cite_paths": {
+        "checked": true,
+        "value": ""
+      },
+      "commit_convention": {
+        "checked": true,
+        "value": "Conventional Commits (feat:, fix:, chore:)"
+      },
+      "commit_subject_len": {
+        "checked": true,
+        "value": 72
+      },
+      "contrast_target": {
+        "checked": true,
+        "value": "4.5:1 (WCAG AA)"
+      },
+      "dependency_audit": {
+        "checked": false,
+        "value": ""
+      },
+      "deterministic_tests": {
+        "checked": true,
+        "value": ""
+      },
+      "dry_principle": {
+        "checked": true,
+        "value": ""
+      },
+      "e2e_critical": {
+        "checked": false,
+        "value": ""
+      },
+      "fail_fast": {
+        "checked": false,
+        "value": ""
+      },
+      "focused_prs": {
+        "checked": true,
+        "value": ""
+      },
+      "formatter": {
+        "checked": true,
+        "value": "Prettier + ESLint (fix on save)"
+      },
+      "handle_errors": {
+        "checked": true,
+        "value": ""
+      },
+      "integration_tests": {
+        "checked": true,
+        "value": ""
+      },
+      "keyboard_nav": {
+        "checked": true,
+        "value": ""
+      },
+      "least_privilege": {
+        "checked": false,
+        "value": ""
+      },
+      "limit_function": {
+        "checked": true,
+        "value": 25
+      },
+      "max_file_length": {
+        "checked": true,
+        "value": 400
+      },
+      "max_nesting": {
+        "checked": true,
+        "value": 3
+      },
+      "min_coverage": {
+        "checked": true,
+        "value": 80
+      },
+      "mock_external": {
+        "checked": true,
+        "value": ""
+      },
+      "naming_conv": {
+        "checked": true,
+        "value": "camelCase for JS, PascalCase for classes"
+      },
+      "no_force_push": {
+        "checked": true,
+        "value": ""
+      },
+      "no_hardcoded_secrets": {
+        "checked": true,
+        "value": ""
+      },
+      "no_magic_numbers": {
+        "checked": true,
+        "value": ""
+      },
+      "no_secrets_in_logs": {
+        "checked": true,
+        "value": ""
+      },
+      "no_unrequested_commits": {
+        "checked": true,
+        "value": ""
+      },
+      "paginate_lists": {
+        "checked": true,
+        "value": ""
+      },
+      "parameterized_queries": {
+        "checked": true,
+        "value": ""
+      },
+      "plan_first": {
+        "checked": true,
+        "value": ""
+      },
+      "preserve_comments": {
+        "checked": true,
+        "value": ""
+      },
+      "profile_first": {
+        "checked": false,
+        "value": ""
+      },
+      "readme_current": {
+        "checked": true,
+        "value": ""
+      },
+      "rebase_policy": {
+        "checked": false,
+        "value": ""
+      },
+      "reduced_motion": {
+        "checked": false,
+        "value": ""
+      },
+      "regression_tests": {
+        "checked": true,
+        "value": ""
+      },
+      "require_docstrings": {
+        "checked": true,
+        "value": ""
+      },
+      "semantic_html": {
+        "checked": true,
+        "value": ""
+      },
+      "signed_commits": {
+        "checked": false,
+        "value": ""
+      },
+      "small_diffs": {
+        "checked": true,
+        "value": ""
+      },
+      "structured_logging": {
+        "checked": true,
+        "value": ""
+      },
+      "test_framework": {
+        "checked": true,
+        "value": "Jest for Frontend, Vitest for Backend Node"
+      },
+      "test_naming": {
+        "checked": false,
+        "value": ""
+      },
+      "update_docs": {
+        "checked": true,
+        "value": ""
+      },
+      "user_facing_messages": {
+        "checked": false,
+        "value": ""
+      },
+      "validate_input": {
+        "checked": true,
+        "value": ""
+      },
+      "verify_compilation": {
+        "checked": false,
+        "value": ""
+      }
+    }
+  },
+  "groups": [],
+  "projectName": "Forestree Agent Workspace",
+  "repoId": "d5d6a598-2ec1-4004-9960-07142f8d4f63",
+  "topologyLayout": {},
+  "version": "1.0.0"
+}

@@ -1,0 +1,116 @@
+{
+  "geometry": {
+    "bar_start_x": 0.1182,
+    "bar_end_x": 0.4644,
+    "bar_attack_y": 0.7415,
+    "bar_defense_y": 0.7836,
+    "bar_stamina_y": 0.8255,
+    "roi_cp": [
+      0.28,
+      0.05,
+      0.72,
+      0.092
+    ],
+    "roi_name": [
+      0.25,
+      0.405,
+      0.75,
+      0.442
+    ],
+    "roi_hp": [
+      0.32,
+      0.458,
+      0.68,
+      0.482
+    ],
+    "roi_size": [
+      0.08,
+      0.526,
+      0.92,
+      0.568
+    ],
+    "card_probes": [
+      [
+        0.505,
+        0.752
+      ],
+      [
+        0.505,
+        0.794
+      ],
+      [
+        0.505,
+        0.836
+      ],
+      [
+        0.3,
+        0.715
+      ]
+    ],
+    "min_saturation": 0.25,
+    "min_brightness": 170
+  },
+  "note": "Ground truth read from real screenshots. IVs from bar measurement, cross-checked by the solver.",
+  "cases": [
+    {
+      "file": "IMG_5324.PNG",
+      "species": "Mewtwo",
+      "cp": 2387,
+      "maxHP": 136,
+      "expectedIVs": [
+        15,
+        15,
+        15
+      ],
+      "expectedLevel": 20.0,
+      "measuredRaw": [
+        15.0,
+        15.0,
+        15.0
+      ],
+      "minConfidence": 1.0,
+      "starTier": 3,
+      "blindCandidates": 10
+    },
+    {
+      "file": "IMG_5325.PNG",
+      "species": "Heatmor",
+      "cp": 1550,
+      "maxHP": 133,
+      "expectedIVs": [
+        8,
+        14,
+        6
+      ],
+      "expectedLevel": 24.0,
+      "measuredRaw": [
+        8.01,
+        13.98,
+        5.97
+      ],
+      "minConfidence": 0.947,
+      "starTier": 1,
+      "blindCandidates": 11
+    },
+    {
+      "file": "IMG_5326.PNG",
+      "species": "Komala",
+      "cp": 1525,
+      "maxHP": 108,
+      "expectedIVs": [
+        8,
+        9,
+        10
+      ],
+      "expectedLevel": 22.0,
+      "measuredRaw": [
+        8.01,
+        9.03,
+        9.88
+      ],
+      "minConfidence": 0.759,
+      "starTier": 1,
+      "blindCandidates": 15
+    }
+  ]
+}

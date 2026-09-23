@@ -1,0 +1,20 @@
+# Databases — user collection data and generated game data, never committed.
+collection.sqlite
+collection.sqlite-shm
+collection.sqlite-wal
+gamedata.sqlite
+gamedata.sqlit
+
+# Upstream PokeMiners game_master dump; re-fetch with
+#   python3 tools/build_gamedata.py --fetch
+gm.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local Claude Code state
+.claude/settings.local.json
+.claude/*.tmp.*
