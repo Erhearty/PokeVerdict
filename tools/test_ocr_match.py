@@ -51,9 +51,8 @@ def rejects(gd: GameData, text: str, reason: str = "") -> None:
         check(f"{text!r} is rejected{' (' + reason + ')' if reason else ''}", True)
 
 
-def main() -> int:
-    gd = GameData(DB)
-
+def test_ocr_matching(gd: GameData) -> None:
+    """OCR-garbled names resolve via glyph/edit-distance; ties and junk are rejected."""
     # ── glyph substitution path ─────────────────────────────────────────────
     # ! | 1  →  l
     resolves(gd, "Aerodacty!", "Aerodactyl")
@@ -78,6 +77,12 @@ def main() -> int:
     # These go through best_species_match but must resolve on the first try.
     for name in ("Mewtwo", "Heatmor", "Komala", "Aerodactyl"):
         resolves(gd, name, name)
+
+
+def main() -> int:
+    """Standalone entry point: run the OCR matching checks and print a summary."""
+    gd = GameData(DB)
+    test_ocr_matching(gd)
 
     print()
     if failures:

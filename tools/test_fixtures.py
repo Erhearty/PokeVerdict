@@ -36,67 +36,72 @@ def check(label: str, ok: bool, detail: str = "") -> None:
         failures.append(label)
 
 
-def main() -> int:
+def _check_case(gd: GameData, case: dict) -> None:
+    """Replay one recorded screenshot and check it against its ground truth."""
+    path = os.path.join(SHOTS, case["file"])
+    if not os.path.exists(path):
+        check(case["file"], False, "screenshot missing")
+        return
+
+    name = f"{case['species']} ({case['file']})"
+    result = analyse(path, gd, case["species"], case["cp"], case["maxHP"])
+
+    if "error" in result:
+        check(name, False, result["error"])
+        return
+
+    # 1. Bars measure to the recorded IVs.
+    check(
+        f"{name} bar measurement",
+        result["ivs"] == case["expectedIVs"],
+        f"got {result['ivs']} want {case['expectedIVs']}",
+    )
+
+    # 2. Measurement is crisply on a step, not caught mid-animation.
+    check(
+        f"{name} confidence",
+        result["min_confidence"] >= 0.5,
+        f"{result['min_confidence']:.3f}",
+    )
+
+    # 3. Star tier matches the badge visible in the screenshot.
+    check(
+        f"{name} star tier",
+        result["stars"] == case["starTier"],
+        f"got {result['stars']} want {case['starTier']}",
+    )
+
+    # 4. The strong cross-check: bars + CP + HP admit exactly one solution.
+    solver = result["solver"]
+    check(
+        f"{name} solver consistency",
+        solver["verdict"] == "consistent",
+        f"{solver['verdict']} ({solver['candidates']} candidates)",
+    )
+    check(
+        f"{name} level",
+        solver["level"] == case["expectedLevel"],
+        f"got {solver['level']} want {case['expectedLevel']}",
+    )
+
+    # 5. Appraisal genuinely earns its keep — blind must be ambiguous.
+    check(
+        f"{name} appraisal is necessary",
+        result["blind_candidates"] > 1,
+        f"CP+HP alone gives {result['blind_candidates']} candidates",
+    )
+
+
+def test_reference_fixtures(gd: GameData) -> None:
+    """Every case in fixtures/reference.json measures and solves as recorded."""
     if not os.path.exists(FIXTURES):
-        print(f"no fixtures at {FIXTURES}")
-        return 1
+        check("reference.json present", False)
+        return
 
     data = json.load(open(FIXTURES))
-    gd = GameData(os.path.join(ROOT, "gamedata.sqlite"))
 
     for case in data["cases"]:
-        path = os.path.join(SHOTS, case["file"])
-        if not os.path.exists(path):
-            check(case["file"], False, "screenshot missing")
-            continue
-
-        name = f"{case['species']} ({case['file']})"
-        result = analyse(path, gd, case["species"], case["cp"], case["maxHP"])
-
-        if "error" in result:
-            check(name, False, result["error"])
-            continue
-
-        # 1. Bars measure to the recorded IVs.
-        check(
-            f"{name} bar measurement",
-            result["ivs"] == case["expectedIVs"],
-            f"got {result['ivs']} want {case['expectedIVs']}",
-        )
-
-        # 2. Measurement is crisply on a step, not caught mid-animation.
-        check(
-            f"{name} confidence",
-            result["min_confidence"] >= 0.5,
-            f"{result['min_confidence']:.3f}",
-        )
-
-        # 3. Star tier matches the badge visible in the screenshot.
-        check(
-            f"{name} star tier",
-            result["stars"] == case["starTier"],
-            f"got {result['stars']} want {case['starTier']}",
-        )
-
-        # 4. The strong cross-check: bars + CP + HP admit exactly one solution.
-        solver = result["solver"]
-        check(
-            f"{name} solver consistency",
-            solver["verdict"] == "consistent",
-            f"{solver['verdict']} ({solver['candidates']} candidates)",
-        )
-        check(
-            f"{name} level",
-            solver["level"] == case["expectedLevel"],
-            f"got {solver['level']} want {case['expectedLevel']}",
-        )
-
-        # 5. Appraisal genuinely earns its keep — blind must be ambiguous.
-        check(
-            f"{name} appraisal is necessary",
-            result["blind_candidates"] > 1,
-            f"CP+HP alone gives {result['blind_candidates']} candidates",
-        )
+        _check_case(gd, case)
 
     # 6. Reading the *first* HP number instead of the max must break things.
     #    This pins the bug that damaged Pokémon would otherwise cause.
@@ -110,6 +115,18 @@ def main() -> int:
         len(wrong) == 0,
         f"{len(wrong)} candidates from the wrong HP",
     )
+
+
+def main() -> int:
+    """Standalone entry point: run the fixture checks and print a summary."""
+    if not os.path.exists(FIXTURES):
+        print(f"no fixtures at {FIXTURES}")
+        return 1
+
+    data = json.load(open(FIXTURES))
+    gd = GameData(os.path.join(ROOT, "gamedata.sqlite"))
+
+    test_reference_fixtures(gd)
 
     print()
     if failures:
